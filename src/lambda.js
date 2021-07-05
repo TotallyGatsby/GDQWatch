@@ -5,6 +5,7 @@ import Discord from 'discord.js';
 import { DynamoDBClient, ScanCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
+
 const gdqUrl = 'https://gamesdonequick.com/schedule/';
 const ddbClient = new DynamoDBClient({ region: 'us-west-2' });
 
