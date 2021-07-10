@@ -102,7 +102,16 @@ export async function handler() {
       if (timeSinceLastUpdate > 20) {
         console.log(`SENDING MESSAGE to hook ${jsonClient.hook} whose last notification was ${timeSinceLastUpdate} minutes ago.`);
         const hook = new Discord.WebhookClient(jsonClient.hook, jsonClient.token);
-        await hook.send(embedMessage);
+
+        let options = {
+          embeds: [embedMessage],
+        };
+
+        if (jsonClient.avatar) {
+          options.avatarURL = jsonClient.avatar;
+        }
+
+        await hook.send(options);
 
         jsonClient.time = DateTime.now().toISO();
 
