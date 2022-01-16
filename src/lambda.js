@@ -1,7 +1,6 @@
 import { parse } from 'node-html-parser';
 import { DateTime } from 'luxon';
 import fetch from 'node-fetch';
-import Discord from 'discord.js';
 import { DynamoDBClient, ScanCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
@@ -11,6 +10,36 @@ const ddbClient = new DynamoDBClient({ region: 'us-west-2' });
 
 function timeString(time, timeZone) {
   return DateTime.fromISO(time).setZone(timeZone).toLocaleString(DateTime.TIME_SIMPLE);
+}
+
+function constructEmbed(nextRun, onDeckRun) {
+  return {
+    "tts": false,
+    "embeds": [
+      {
+        title: null,
+        type: "rich",
+        description: null,
+        url: null,
+        timestamp: 0,
+        color: 15865927,
+        fields: [
+          { name: 'Next Game:', value: nextRun.run },
+          { name: 'Start Time', value: `${timeString(nextRun.time, "America/Los_Angeles")} PST / ${timeString(nextRun.time, "America/New_York")} EST`, inline: true },
+          { name: 'Estimate', value: nextRun.estimate, inline: true },
+          { name: 'Runner', value: nextRun.runners, inline: true },
+          { name: '\u200B', value: '\u200B' },
+          { name: 'On Deck:', value: onDeckRun.run },
+          { name: 'Start Time', value: `${timeString(onDeckRun.time, "America/Los_Angeles")} PST / ${timeString(onDeckRun.time, "America/New_York")} EST`, inline: true },
+          { name: 'Estimate', value: onDeckRun.estimate, inline: true },
+          { name: 'Runner', value: onDeckRun.runners, inline: true },
+        ],
+        thumbnail: null,
+        image: null,
+        author: null,
+        footer: null
+      }],
+  };
 }
 
 export async function handler() {
@@ -62,12 +91,14 @@ export async function handler() {
       }
     });
 
+
   const nextRunTime = DateTime.fromISO(nextRun.time);
   const timeTilNextRun = nextRunTime.diffNow('minutes').toObject().minutes;
 
   console.log(`Next run starts in ${timeTilNextRun} minutes`);
+
   if (timeTilNextRun > 15) {
-    console.log(`Sleeping, nothing to report.`);
+    console.log(`Sleeping, nothing to report. ${process.env.notificationsTable}`);
     return {
       statusCode: 200,
       headers: { "Content-Type": "text/plain" },
@@ -75,19 +106,7 @@ export async function handler() {
     };
   }
 
-  const embedMessage = new Discord.MessageEmbed()
-    .setColor('#F21847')
-    .addFields(
-      { name: 'Next Game:', value: nextRun.run },
-      { name: 'Start Time', value: `${timeString(nextRun.time, "America/Los_Angeles")} PST / ${timeString(nextRun.time, "America/New_York")} EST`, inline: true },
-      { name: 'Estimate', value: nextRun.estimate, inline: true },
-      { name: 'Runner', value: nextRun.runners, inline: true },
-      { name: '\u200B', value: '\u200B' },
-      { name: 'On Deck:', value: onDeckRun.run },
-      { name: 'Start Time', value: `${timeString(onDeckRun.time, "America/Los_Angeles")} PST / ${timeString(onDeckRun.time, "America/New_York")} EST`, inline: true },
-      { name: 'Estimate', value: onDeckRun.estimate, inline: true },
-      { name: 'Runner', value: onDeckRun.runners, inline: true },
-    );
+  const embedObject = constructEmbed(nextRun, onDeckRun);
 
   const command = new ScanCommand({ TableName: process.env.notificationsTable });
   const response = await ddbClient.send(command);
@@ -101,17 +120,12 @@ export async function handler() {
 
       if (timeSinceLastUpdate > 20) {
         console.log(`SENDING MESSAGE to hook ${jsonClient.hook} whose last notification was ${timeSinceLastUpdate} minutes ago.`);
-        const hook = new Discord.WebhookClient(jsonClient.hook, jsonClient.token);
 
-        let options = {
-          embeds: [embedMessage],
-        };
-
-        if (jsonClient.avatar) {
-          options.avatarURL = jsonClient.avatar;
-        }
-
-        await hook.send(options);
+        await fetch(`https://discord.com/api/webhooks/${jsonClient.hook}/${jsonClient.token}`, {
+          method: 'post',
+          body: JSON.stringify(embedObject),
+          headers: { 'Content-Type': 'application/json' }
+        });
 
         jsonClient.time = DateTime.now().toISO();
 
